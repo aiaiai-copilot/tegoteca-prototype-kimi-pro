@@ -1,6 +1,6 @@
 import Dexie, { type Table } from 'dexie';
 import type { Content, Element, Tag, Workspace } from '../types';
-import { replaceContent } from '../model/workspace';
+import { replaceContent, updateTitleAndTags } from '../model/workspace';
 
 export class TegotecaDB extends Dexie {
   tags!: Table<Tag, string>;
@@ -40,8 +40,9 @@ export async function replaceElementContent(
   element: Element,
   content: Content,
   now: number,
+  metadata: { title?: string; tagIds?: string[] | null } = {},
 ): Promise<Element> {
-  const replacement = replaceContent(element, content, now);
+  const replacement = updateTitleAndTags(replaceContent(element, content, now), metadata, now);
   await db.transaction('rw', db.elements, async () => {
     await db.elements.delete(element.id);
     await db.elements.put(replacement);

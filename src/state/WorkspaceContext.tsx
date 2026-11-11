@@ -33,6 +33,7 @@ export interface WorkspaceContextValue {
   createElement(input: CreateElementInput): Promise<Element>;
   saveMetadata(id: string, patch: { title?: string; tagIds?: string[] | null }): Promise<Element>;
   saveContent(id: string, content: Content): Promise<Element>;
+  saveElement(id: string, input: CreateElementInput, contentChanged: boolean): Promise<Element>;
   deleteElement(id: string): Promise<void>;
   addTag(name: string, description?: string): Promise<Tag>;
   renameTag(id: string, name: string): Promise<void>;
@@ -118,6 +119,25 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
         elements: current.elements.map((item) => item.id === id ? replacement : item),
       }));
       return replacement;
+    }),
+    saveElement: (id, input, contentChanged) => perform(async () => {
+      const original = workspace.elements.find((item) => item.id === id);
+      if (!original) throw new Error('Элемент не найден.');
+      let saved: Element;
+      if (contentChanged) {
+        saved = await replaceElementContent(db, original, input.content, Date.now(), {
+          title: input.title,
+          tagIds: input.tagIds,
+        });
+      } else {
+        saved = updateTitleAndTags(original, { title: input.title, tagIds: input.tagIds }, Date.now());
+        await putElement(db, saved);
+      }
+      setWorkspace((current) => ({
+        ...current,
+        elements: current.elements.map((item) => item.id === id ? saved : item),
+      }));
+      return saved;
     }),
     deleteElement: (id) => perform(async () => {
       await db.elements.delete(id);
