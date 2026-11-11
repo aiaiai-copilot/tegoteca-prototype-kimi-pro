@@ -26,13 +26,17 @@ function ReadyWorkspace() {
   const { workspace, error } = useWorkspace();
   const navigation = useNavigation(workspace.tags.map((tag) => tag.id));
   const [settings, updateSettings] = useSettings();
-  const [editor, setEditor] = useState<{ element?: Element } | null>(null);
+  const [editor, setEditor] = useState<{ element?: Element; fromMarking?: boolean; onMarked?: () => void } | null>(null);
   const [markingOpen, setMarkingOpen] = useState(false);
   const [glossaryOpen, setGlossaryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [savedElement, setSavedElement] = useState<Element | null>(null);
 
   function onSaved(element: Element) {
+    if (editor?.fromMarking) {
+      if (element.tagIds !== null) editor.onMarked?.();
+      return;
+    }
     if (element.tagIds !== null && !sameNode(navigation.current, element.tagIds)) setSavedElement(element);
   }
 
@@ -49,10 +53,10 @@ function ReadyWorkspace() {
         onOpenGlossary={() => setGlossaryOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
       />
-      {editor && <ElementEditor element={editor.element} current={navigation.current} settings={settings} onClose={() => setEditor(null)} onSaved={onSaved} />}
-      {markingOpen && <MarkingMode onClose={() => setMarkingOpen(false)} />}
+      {markingOpen && <MarkingMode onClose={() => setMarkingOpen(false)} onEdit={(element, onMarked) => setEditor({ element, fromMarking: true, onMarked })} />}
       {glossaryOpen && <GlossaryPanel onClose={() => setGlossaryOpen(false)} />}
       {settingsOpen && <SettingsPanel settings={settings} onChange={updateSettings} onClose={() => setSettingsOpen(false)} />}
+      {editor && <ElementEditor element={editor.element} current={navigation.current} settings={settings} onClose={() => setEditor(null)} onSaved={onSaved} />}
       {savedElement && (
         <Modal title="Элемент сохранён" onClose={() => setSavedElement(null)}>
           <p>Текущий узел не изменился. Собственный узел сохранённого элемента отличается от него.</p>

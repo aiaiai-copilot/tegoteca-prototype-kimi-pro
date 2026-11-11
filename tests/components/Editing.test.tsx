@@ -35,6 +35,13 @@ async function storedElements() {
   return elements;
 }
 
+async function storedTags() {
+  const db = new TegotecaDB(activeDatabase);
+  const tags = await db.tags.toArray();
+  db.close();
+  return tags;
+}
+
 function editCard(title: string) {
   const card = screen.getByText(title).closest('article');
   if (!card) throw new Error(`Карточка ${title} не найдена`);
@@ -67,6 +74,54 @@ describe('создание и редактирование', () => {
     const created = (await storedElements()).find((element) => element.title === 'Новая заметка');
     expect(created?.tagIds).toHaveLength(2);
     expect(created?.tagIds).toContain(demoTagIds.repair);
+  });
+
+  it('блокирует сохранение элемента, пока новый тег добавляется в разметку', async () => {
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '+ Новый элемент' }));
+    const dialog = screen.getByRole('dialog', { name: 'Новый элемент' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Название' }), { target: { value: 'Запись с новым тегом' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Добавить тег к разметке' }), { target: { value: 'ожидаемый тег' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Добавить тег' }));
+
+    expect(within(dialog).getByRole('button', { name: 'Сохранить элемент' })).toBeDisabled();
+    expect(within(dialog).getByRole('button', { name: 'Быстро сохранить без разметки' })).toBeDisabled();
+    expect(await within(dialog).findByRole('button', { name: 'Убрать тег ожидаемый тег' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Сохранить элемент' })).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Сохранить элемент' }));
+
+    await waitFor(async () => {
+      const created = (await storedElements()).find((element) => element.title === 'Запись с новым тегом');
+      const tag = (await storedTags()).find((item) => item.name === 'ожидаемый тег');
+      expect(created?.tagIds).toEqual([tag?.id]);
+    });
+  });
+
+  it('показывает незаданную разметку отдельно от заданного пустого набора', async () => {
+    await renderApp();
+    fireEvent.click(screen.getByRole('button', { name: '+ Новый элемент' }));
+    const dialog = screen.getByRole('dialog', { name: 'Новый элемент' });
+    fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Оставить без разметки' }));
+    expect(within(dialog).getByText('Разметка не задана')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Пустой набор (корень)')).not.toBeInTheDocument();
+  });
+
+  it('не называет область пустой, когда в ней есть только неразмеченные записи', async () => {
+    await renderApp({
+      tags: [],
+      elements: [{
+        id: 'draft-only',
+        title: 'Единственный черновик',
+        content: { kind: 'text', text: 'Ещё без тегов' },
+        tagIds: null,
+        createdAt: 1,
+        modifiedAt: 1,
+      }],
+    });
+    expect(screen.getByRole('heading', { name: 'Записи ждут разметки.' })).toBeInTheDocument();
+    expect(screen.queryByText('Рабочая область пуста.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Перейти к разметке' }));
+    expect(screen.getByRole('dialog', { name: 'Режим разметки' })).toHaveTextContent('Единственный черновик');
   });
 
   it('быстро сохраняет неразмеченный элемент и показывает его в отдельном режиме', async () => {
@@ -132,8 +187,14 @@ describe('создание и редактирование', () => {
     fireEvent.click(within(kitchen).getByRole('button', { name: 'Сохранить изменения' }));
     expect(await within(glossary).findByRole('alert')).toHaveTextContent('Тег с таким названием уже существует.');
     fireEvent.change(within(kitchen).getByRole('textbox', { name: 'Название тега' }), { target: { value: 'кухонная зона' } });
+    fireEvent.change(within(kitchen).getByRole('textbox', { name: 'Описание тега' }), { target: { value: 'Место для готовки' } });
     fireEvent.click(within(kitchen).getByRole('button', { name: 'Сохранить изменения' }));
-    await waitFor(() => expect(within(kitchen).getByRole('textbox', { name: 'Название тега' })).toHaveValue('кухонная зона'));
+    await waitFor(async () => {
+      expect((await storedTags()).find((tag) => tag.id === demoTagIds.kitchen)).toMatchObject({
+        name: 'кухонная зона',
+        description: 'Место для готовки',
+      });
+    });
 
     const repair = glossary.querySelector('[data-tag-id="tag-repair"]') as HTMLElement;
     fireEvent.click(within(repair).getByRole('button', { name: 'Удалить тег' }));

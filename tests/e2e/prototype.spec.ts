@@ -90,6 +90,36 @@ test('разметка E9 пустым набором и возврат к ос�
   await expect(page.locator('article[data-element-id]')).toHaveCount(10);
 });
 
+test('неразмеченный элемент редактируется и удаляется из очереди с сохранением после reload', async ({ page }) => {
+  await loadDemo(page);
+  await page.getByRole('button', { name: 'Разметка 1' }).click();
+  const marking = page.getByRole('dialog', { name: 'Режим разметки' });
+  await screenshot(page, 'marking-actions');
+  await marking.getByRole('button', { name: 'Изменить элемент' }).click();
+  const editor = page.getByRole('dialog', { name: 'Изменение элемента' });
+  await expect(editor.getByRole('checkbox', { name: 'Оставить без разметки' })).toBeChecked();
+  await expect(editor.getByText('Разметка не задана')).toBeVisible();
+  await editor.getByRole('textbox', { name: 'Название' }).fill('Исправленный набросок');
+  await editor.getByRole('textbox', { name: 'Текст элемента' }).fill('Исправленное содержание');
+  await screenshot(page, 'marking-editor');
+  await editor.getByRole('button', { name: 'Сохранить элемент' }).click();
+  await editor.getByRole('button', { name: 'Подтвердить сохранение' }).click();
+  await expect(editor).toHaveCount(0);
+  await expect(page.getByRole('dialog', { name: 'Элемент сохранён' })).toHaveCount(0);
+  await expect(marking.getByText('Осталось: 1')).toBeVisible();
+  await expect(marking.getByRole('progressbar')).toHaveAttribute('value', '0');
+
+  await page.reload();
+  await page.getByRole('button', { name: 'Разметка 1' }).click();
+  await expect(marking.getByText('Исправленный набросок')).toBeVisible();
+  await expect(marking.getByText('Исправленное содержание')).toBeVisible();
+  await marking.getByRole('button', { name: 'Удалить элемент' }).click();
+  await marking.getByRole('button', { name: 'Подтвердить удаление элемента' }).click();
+  await expect(marking.getByText('Все элементы размечены.')).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('button', { name: 'Разметка', exact: true })).toBeVisible();
+});
+
 test('глоссарий переименовывает, отклоняет дубликат и удаляет тег с подтверждением', async ({ page }) => {
   await loadDemo(page);
   await page.getByRole('button', { name: 'Глоссарий' }).click();
@@ -102,6 +132,11 @@ test('глоссарий переименовывает, отклоняет ду
   await kitchen.getByRole('textbox', { name: 'Описание тега' }).fill('Место для готовки');
   await kitchen.getByRole('button', { name: 'Сохранить изменения' }).click();
   await expect(kitchen.getByRole('textbox', { name: 'Название тега' })).toHaveValue('кухонная зона');
+  await expect(page.getByRole('button', { name: /^\+ кухонная зона/ })).toBeVisible();
+  await page.reload();
+  await page.getByRole('button', { name: 'Глоссарий' }).click();
+  await expect(kitchen.getByRole('textbox', { name: 'Название тега' })).toHaveValue('кухонная зона');
+  await expect(kitchen.getByRole('textbox', { name: 'Описание тега' })).toHaveValue('Место для готовки');
 
   const repair = glossary.locator('[data-tag-id="tag-repair"]');
   await repair.getByRole('button', { name: 'Удалить тег' }).click();

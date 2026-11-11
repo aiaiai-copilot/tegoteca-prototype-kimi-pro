@@ -43,6 +43,26 @@ describe('операции рабочей области', () => {
     unmount();
   });
 
+  it('дедуплицирует канонически одинаковые теги при параллельном создании', async () => {
+    const { result, unmount } = setup();
+    await waitFor(() => expect(result.current.status).toBe('ready'));
+
+    let ids: string[] = [];
+    await act(async () => {
+      ids = (await Promise.all([
+        result.current.addTag('  Параллельный   тег '),
+        result.current.addTag('ПАРАЛЛЕЛЬНЫЙ ТЕГ'),
+      ])).map((tag) => tag.id);
+    });
+    expect(ids[0]).toBe(ids[1]);
+    expect(result.current.workspace.tags).toHaveLength(1);
+    const databaseName = names[names.length - 1];
+    const db = new TegotecaDB(databaseName);
+    expect(await db.tags.toArray()).toHaveLength(1);
+    db.close();
+    unmount();
+  });
+
   it('сохраняет id при метаданных и заменяет запись при новом содержании', async () => {
     const { result, unmount } = setup();
     await waitFor(() => expect(result.current.status).toBe('ready'));

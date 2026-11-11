@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { Tag } from '../types';
 import { canonicalTagName } from '../model/tags';
 import { useWorkspace } from '../state/WorkspaceContext';
@@ -8,14 +8,18 @@ interface TagDraftInputProps {
   value: string[];
   onChange(tagIds: string[]): void;
   disabled?: boolean;
+  unmarked?: boolean;
+  onBusyChange?(busy: boolean): void;
 }
 
-export function TagDraftInput({ tags, value, onChange, disabled = false }: TagDraftInputProps) {
+export function TagDraftInput({ tags, value, onChange, disabled = false, unmarked = false, onBusyChange }: TagDraftInputProps) {
   const { addTag } = useWorkspace();
+  const idPrefix = useId();
   const [query, setQuery] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => onBusyChange?.(busy), [busy, onBusyChange]);
   const canonicalQuery = canonicalTagName(query);
   const selected = value.map((id) => tags.find((tag) => tag.id === id)).filter((tag): tag is Tag => Boolean(tag));
   const suggestions = canonicalQuery
@@ -24,7 +28,7 @@ export function TagDraftInput({ tags, value, onChange, disabled = false }: TagDr
     : [];
 
   async function add() {
-    if (!canonicalQuery || disabled) return;
+    if (!canonicalQuery || disabled || busy) return;
     setBusy(true);
     setError('');
     try {
@@ -43,16 +47,16 @@ export function TagDraftInput({ tags, value, onChange, disabled = false }: TagDr
   return (
     <div className="tag-draft">
       <div className="selected-tags" aria-label="Разметка элемента">
-        {selected.length === 0 ? <span className="muted">Пустой набор (корень)</span> : selected.map((tag) => (
-          <button key={tag.id} type="button" className="tag tag--selected" aria-label={`Убрать тег ${tag.name}`} disabled={disabled} onClick={() => onChange(value.filter((id) => id !== tag.id))}>
+        {selected.length === 0 ? <span className="muted">{unmarked ? 'Разметка не задана' : 'Пустой набор (корень)'}</span> : selected.map((tag) => (
+          <button key={tag.id} type="button" className="tag tag--selected" aria-label={`Убрать тег ${tag.name}`} disabled={disabled || busy} onClick={() => onChange(value.filter((id) => id !== tag.id))}>
             {tag.name} <span aria-hidden="true">×</span>
           </button>
         ))}
       </div>
       <div className="tag-draft__controls">
         <div className="field">
-          <label htmlFor="element-tag-input">Добавить тег к разметке</label>
-          <input id="element-tag-input" autoComplete="off" value={query} disabled={disabled} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
+          <label htmlFor={`${idPrefix}-element-tag-input`}>Добавить тег к разметке</label>
+          <input id={`${idPrefix}-element-tag-input`} autoComplete="off" value={query} disabled={disabled || busy} onChange={(event) => setQuery(event.target.value)} onKeyDown={(event) => {
             if (event.key === 'Enter') {
               event.preventDefault();
               void add();
@@ -60,14 +64,14 @@ export function TagDraftInput({ tags, value, onChange, disabled = false }: TagDr
           }} />
         </div>
         <div className="field">
-          <label htmlFor="new-tag-description">Описание нового тега (необязательно)</label>
-          <input id="new-tag-description" value={description} disabled={disabled} onChange={(event) => setDescription(event.target.value)} />
+          <label htmlFor={`${idPrefix}-new-tag-description`}>Описание нового тега (необязательно)</label>
+          <input id={`${idPrefix}-new-tag-description`} value={description} disabled={disabled || busy} onChange={(event) => setDescription(event.target.value)} />
         </div>
         <button type="button" className="button button--secondary" disabled={disabled || busy || !canonicalQuery} onClick={() => void add()}>Добавить тег</button>
       </div>
       {canonicalQuery && suggestions.length > 0 && (
         <ul className="suggestions suggestions--static" role="listbox" aria-label="Существующие теги">
-          {suggestions.map((tag) => <li key={tag.id}><button type="button" role="option" aria-selected="false" onClick={() => {
+          {suggestions.map((tag) => <li key={tag.id}><button type="button" role="option" aria-selected="false" disabled={disabled || busy} onClick={() => {
             onChange([...value, tag.id]);
             setQuery('');
           }}><span>{tag.name}</span>{tag.description && <small>{tag.description}</small>}</button></li>)}

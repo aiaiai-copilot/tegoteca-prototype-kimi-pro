@@ -36,9 +36,8 @@ export interface WorkspaceContextValue {
   saveElement(id: string, input: CreateElementInput, contentChanged: boolean): Promise<Element>;
   deleteElement(id: string): Promise<void>;
   addTag(name: string, description?: string): Promise<Tag>;
-  renameTag(id: string, name: string): Promise<void>;
+  saveTag(id: string, patch: { name: string; description: string }): Promise<void>;
   deleteTag(id: string): Promise<void>;
-  updateTagDescription(id: string, description: string): Promise<void>;
   loadDemo(): Promise<void>;
   addDemoMedia(): Promise<void>;
   resetWorkspace(): Promise<void>;
@@ -153,20 +152,39 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
     addTag: (name, description = '') => perform(async () => {
       const canonical = canonicalTagName(name);
       if (!canonical) throw new Error('Название тега не может быть пустым.');
-      const existing = workspace.tags.find((tag) => canonicalTagName(tag.name) === canonical);
-      if (existing) return existing;
-      const created: Tag = {
-        id: crypto.randomUUID(),
-        name: name.trim().replace(/\s+/gu, ' ').normalize('NFC'),
-        description: description.trim(),
-      };
-      await getDb().tags.put(created);
-      setWorkspace((current) => ({ ...current, tags: [...current.tags, created] }));
-      return created;
+      const db = getDb();
+      const tag = await db.transaction('rw', db.tags, async () => {
+        const existing = (await db.tags.toArray()).find((item) => canonicalTagName(item.name) === canonical);
+        if (existing) return existing;
+        const created: Tag = {
+          id: crypto.randomUUID(),
+          name: name.trim().replace(/\s+/gu, ' ').normalize('NFC'),
+          description: description.trim(),
+        };
+        await db.tags.put(created);
+        return created;
+      });
+      setWorkspace((current) => {
+        if (current.tags.some((item) => canonicalTagName(item.name) === canonical)) return current;
+        return { ...current, tags: [...current.tags, tag] };
+      });
+      return tag;
     }),
-    renameTag: (id, name) => perform(() => commitWorkspace(renameWorkspaceTag(workspace, id, name))),
+    saveTag: (id, patch) => perform(async () => {
+      const db = getDb();
+      const next = await db.transaction('rw', db.tags, db.elements, async () => {
+        const current: Workspace = {
+          tags: await db.tags.toArray(),
+          elements: await db.elements.toArray(),
+        };
+        const renamed = renameWorkspaceTag(current, id, patch.name);
+        const updated = changeTagDescription(renamed, id, patch.description);
+        await replaceWorkspace(db, updated);
+        return updated;
+      });
+      setWorkspace(next);
+    }),
     deleteTag: (id) => perform(() => commitWorkspace(removeTag(workspace, id))),
-    updateTagDescription: (id, description) => perform(() => commitWorkspace(changeTagDescription(workspace, id, description))),
     loadDemo: () => perform(() => commitWorkspace(makeDemoWorkspace())),
     addDemoMedia: () => perform(async () => {
       const media = await fetchDemoMedia();

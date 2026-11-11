@@ -19,7 +19,7 @@ export function GlossaryPanel({ onClose }: { onClose(): void }) {
 }
 
 function GlossaryRow({ tag }: { tag: Tag }) {
-  const { workspace, renameTag, updateTagDescription, deleteTag } = useWorkspace();
+  const { workspace, saveTag, deleteTag } = useWorkspace();
   const [name, setName] = useState(tag.name);
   const [description, setDescription] = useState(tag.description);
   const [confirming, setConfirming] = useState(false);
@@ -31,8 +31,9 @@ function GlossaryRow({ tag }: { tag: Tag }) {
     setBusy(true);
     setError('');
     try {
-      if (name !== tag.name) await renameTag(tag.id, name);
-      if (description !== tag.description) await updateTagDescription(tag.id, description);
+      if (name !== tag.name || description !== tag.description) {
+        await saveTag(tag.id, { name, description });
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {

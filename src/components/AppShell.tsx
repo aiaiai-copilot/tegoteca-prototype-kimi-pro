@@ -90,6 +90,7 @@ export function AppShell({
           elements={viewMode === 'own' ? own : selection}
           selectionCount={selection.length}
           ownCount={own.length}
+          unmarkedCount={unmarkedCount}
           current={current}
           tags={workspace.tags}
           viewMode={viewMode}
@@ -98,6 +99,7 @@ export function AppShell({
           setSortMode={navigation.setSortMode}
           onCreate={onCreate}
           onEdit={onEdit}
+          onOpenMarking={onOpenMarking}
         />
       </main>
       <footer className="app-footer">Данные хранятся только в этом браузере · IndexedDB · без сервера</footer>

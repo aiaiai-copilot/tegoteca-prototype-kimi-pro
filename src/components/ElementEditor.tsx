@@ -32,6 +32,7 @@ export function ElementEditor({ element, current, settings, onClose, onSaved }: 
   const [text, setText] = useState(element?.content.kind === 'text' ? element.content.text : '');
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
+  const [tagBusy, setTagBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmingContent, setConfirmingContent] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
@@ -57,6 +58,7 @@ export function ElementEditor({ element, current, settings, onClose, onSaved }: 
   }
 
   async function performSave(forcedTags?: string[] | null) {
+    if (busy || tagBusy) return;
     setBusy(true);
     setError('');
     try {
@@ -89,6 +91,7 @@ export function ElementEditor({ element, current, settings, onClose, onSaved }: 
     <Modal title={element ? 'Изменение элемента' : 'Новый элемент'} onClose={onClose} wide>
       <form onSubmit={(event) => {
         event.preventDefault();
+        if (busy || tagBusy) return;
         if (element && contentChanged && settings.contentReminder) setConfirmingContent(true);
         else void performSave();
       }}>
@@ -103,7 +106,7 @@ export function ElementEditor({ element, current, settings, onClose, onSaved }: 
             <input type="checkbox" checked={tagIds === null} onChange={(event) => setTagIds(event.target.checked ? null : [])} />
             Оставить без разметки
           </label>
-          <TagDraftInput tags={workspace.tags} value={tagIds ?? []} onChange={setTagIds} disabled={tagIds === null} />
+          <TagDraftInput tags={workspace.tags} value={tagIds ?? []} onChange={setTagIds} disabled={tagIds === null} unmarked={tagIds === null} onBusyChange={setTagBusy} />
           {tagsChanged && <p className="original-markup">Исходная разметка: <strong>{originalMarkup}</strong></p>}
         </fieldset>
 
@@ -130,7 +133,7 @@ export function ElementEditor({ element, current, settings, onClose, onSaved }: 
           <div className="confirmation-box" role="alert">
             <strong>Содержание изменилось</strong>
             <p>Проверьте, что содержание соответствует тегам. Элемент получит новый идентификатор.</p>
-            <div className="dialog-actions"><button type="button" className="button button--primary" onClick={() => void performSave()}>Подтвердить сохранение</button><button type="button" className="button button--quiet" onClick={() => setConfirmingContent(false)}>Вернуться</button></div>
+            <div className="dialog-actions"><button type="button" className="button button--primary" disabled={busy || tagBusy} onClick={() => void performSave()}>Подтвердить сохранение</button><button type="button" className="button button--quiet" onClick={() => setConfirmingContent(false)}>Вернуться</button></div>
           </div>
         )}
         {confirmingDelete && (
@@ -140,10 +143,10 @@ export function ElementEditor({ element, current, settings, onClose, onSaved }: 
           </div>
         )}
         <div className="editor-actions">
-          <button type="submit" className="button button--primary" disabled={busy}>Сохранить элемент</button>
-          {!element && <button type="button" className="button button--secondary" disabled={busy} onClick={() => void performSave(null)}>Быстро сохранить без разметки</button>}
-          {element && <button type="button" className="button button--danger-quiet" disabled={busy} onClick={() => setConfirmingDelete(true)}>Удалить элемент</button>}
-          <button type="button" className="button button--quiet" disabled={busy} onClick={onClose}>Отмена</button>
+          <button type="submit" className="button button--primary" disabled={busy || tagBusy}>Сохранить элемент</button>
+          {!element && <button type="button" className="button button--secondary" disabled={busy || tagBusy} onClick={() => void performSave(null)}>Быстро сохранить без разметки</button>}
+          {element && <button type="button" className="button button--danger-quiet" disabled={busy || tagBusy} onClick={() => setConfirmingDelete(true)}>Удалить элемент</button>}
+          <button type="button" className="button button--quiet" disabled={busy || tagBusy} onClick={onClose}>Отмена</button>
         </div>
       </form>
     </Modal>

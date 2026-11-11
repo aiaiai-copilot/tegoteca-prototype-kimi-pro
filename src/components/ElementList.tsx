@@ -8,6 +8,7 @@ interface ElementListProps {
   elements: Element[];
   selectionCount: number;
   ownCount: number;
+  unmarkedCount?: number;
   current: string[];
   tags: Tag[];
   viewMode: ViewMode;
@@ -16,6 +17,7 @@ interface ElementListProps {
   setSortMode(mode: SortMode): void;
   onCreate?(): void;
   onEdit?(element: Element): void;
+  onOpenMarking?(): void;
 }
 
 const dateFormatter = new Intl.DateTimeFormat('ru', { dateStyle: 'medium', timeStyle: 'short' });
@@ -24,6 +26,7 @@ export function ElementList({
   elements,
   selectionCount,
   ownCount,
+  unmarkedCount = 0,
   current,
   tags,
   viewMode,
@@ -32,6 +35,7 @@ export function ElementList({
   setSortMode,
   onCreate,
   onEdit,
+  onOpenMarking,
 }: ElementListProps) {
   const [visibleCount, setVisibleCount] = useState(100);
   const currentKey = nodeKey(current);
@@ -67,7 +71,13 @@ export function ElementList({
 
       {sorted.length === 0 ? (
         <div className="empty-state">
-          {current.length === 0 && selectionCount === 0 ? (
+          {current.length === 0 && selectionCount === 0 && unmarkedCount > 0 ? (
+            <>
+              <h3>Записи ждут разметки.</h3>
+              <p>В корне пока нет элементов с заданной пустой разметкой. Неразмеченных записей: {unmarkedCount}.</p>
+              <button type="button" className="button button--primary" onClick={onOpenMarking} disabled={!onOpenMarking}>Перейти к разметке</button>
+            </>
+          ) : current.length === 0 && selectionCount === 0 ? (
             <>
               <h3>Рабочая область пуста.</h3>
               <p>Добавьте первую запись или загрузите демонстрационный набор в настройках.</p>
