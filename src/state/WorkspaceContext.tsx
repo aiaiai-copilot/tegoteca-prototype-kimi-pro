@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { createContext, useContext } from 'react';
 import type { Content, Element, Tag, Workspace } from '../types';
 import {
@@ -48,13 +48,19 @@ export interface WorkspaceContextValue {
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
 export function WorkspaceProvider({ children, databaseName }: { children: ReactNode; databaseName?: string }) {
-  const db = useMemo(() => new TegotecaDB(databaseName), [databaseName]);
+  const dbRef = useRef<TegotecaDB | null>(null);
+  const getDb = () => {
+    if (!dbRef.current) dbRef.current = new TegotecaDB(databaseName);
+    return dbRef.current;
+  };
   const [workspace, setWorkspace] = useState<Workspace>(emptyWorkspace);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [error, setError] = useState('');
 
   useEffect(() => {
     let active = true;
+    const db = new TegotecaDB(databaseName);
+    dbRef.current = db;
     setStatus('loading');
     loadWorkspace(db)
       .then((loaded) => {
@@ -69,9 +75,10 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
       });
     return () => {
       active = false;
+      if (dbRef.current === db) dbRef.current = null;
       db.close();
     };
-  }, [db]);
+  }, [databaseName]);
 
   async function perform<T>(action: () => Promise<T>): Promise<T> {
     setError('');
@@ -84,7 +91,7 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
   }
 
   async function commitWorkspace(next: Workspace): Promise<void> {
-    await replaceWorkspace(db, next);
+    await replaceWorkspace(getDb(), next);
     setWorkspace(next);
   }
 
@@ -95,7 +102,7 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
     createElement: (input) => perform(async () => {
       const now = Date.now();
       const created: Element = { ...input, id: crypto.randomUUID(), createdAt: now, modifiedAt: now };
-      await putElement(db, created);
+      await putElement(getDb(), created);
       setWorkspace((current) => ({ ...current, elements: [...current.elements, created] }));
       return created;
     }),
@@ -103,7 +110,7 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
       const original = workspace.elements.find((item) => item.id === id);
       if (!original) throw new Error('Элемент не найден.');
       const updated = updateTitleAndTags(original, patch, Date.now());
-      await putElement(db, updated);
+      await putElement(getDb(), updated);
       setWorkspace((current) => ({
         ...current,
         elements: current.elements.map((item) => item.id === id ? updated : item),
@@ -113,7 +120,7 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
     saveContent: (id, content) => perform(async () => {
       const original = workspace.elements.find((item) => item.id === id);
       if (!original) throw new Error('Элемент не найден.');
-      const replacement = await replaceElementContent(db, original, content, Date.now());
+      const replacement = await replaceElementContent(getDb(), original, content, Date.now());
       setWorkspace((current) => ({
         ...current,
         elements: current.elements.map((item) => item.id === id ? replacement : item),
@@ -125,13 +132,13 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
       if (!original) throw new Error('Элемент не найден.');
       let saved: Element;
       if (contentChanged) {
-        saved = await replaceElementContent(db, original, input.content, Date.now(), {
+        saved = await replaceElementContent(getDb(), original, input.content, Date.now(), {
           title: input.title,
           tagIds: input.tagIds,
         });
       } else {
         saved = updateTitleAndTags(original, { title: input.title, tagIds: input.tagIds }, Date.now());
-        await putElement(db, saved);
+        await putElement(getDb(), saved);
       }
       setWorkspace((current) => ({
         ...current,
@@ -140,7 +147,7 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
       return saved;
     }),
     deleteElement: (id) => perform(async () => {
-      await db.elements.delete(id);
+      await getDb().elements.delete(id);
       setWorkspace((current) => ({ ...current, elements: current.elements.filter((item) => item.id !== id) }));
     }),
     addTag: (name, description = '') => perform(async () => {
@@ -153,7 +160,7 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
         name: name.trim().replace(/\s+/gu, ' ').normalize('NFC'),
         description: description.trim(),
       };
-      await db.tags.put(created);
+      await getDb().tags.put(created);
       setWorkspace((current) => ({ ...current, tags: [...current.tags, created] }));
       return created;
     }),
@@ -183,6 +190,7 @@ export function WorkspaceProvider({ children, databaseName }: { children: ReactN
         };
       });
       const newTags = nextTags.filter((tag) => !workspace.tags.some((existing) => existing.id === tag.id));
+      const db = getDb();
       await db.transaction('rw', db.tags, db.elements, async () => {
         await db.tags.bulkPut(newTags);
         await db.elements.bulkPut(newElements);
